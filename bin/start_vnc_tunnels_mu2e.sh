@@ -41,6 +41,7 @@ end_port=$((start_port + $numports))
 #echo "Port: $start_port"
 #echo "End Port: $end_port"
 #echo "Num: $num"
+echo "Killflag: $killflag"
 
 ###################################
 # Check for a valid Kerberos ticket
@@ -60,7 +61,21 @@ fi
 #################################
 # If we are killing off tunnels
 # we execute this block
-
+if [ $killflag -ne 0 ]; then
+    # Issue the kill command and exit
+    echo "Killing Existing Tunnels"
+    for i in {$start_port..$end_port} 
+    do
+        echo -n "Killing Tunnel to $vnchost on port $i"
+        ssh -S /tmp/ssh-ctrl-${vnchost}-${i} -O exit $vnchost &> /dev/null
+    if [ $? -eq 0 ]; then
+        echo "- Killed"
+    else
+        echo "- Failed"
+    fi
+    done
+    exit 1
+fi
 #################################
 
 #################################
@@ -69,7 +84,7 @@ fi
 for i in {$start_port..$end_port}
 do
     echo -n  "Starting Tunnel to $vnchost on port $i"
-    ssh -S /tmp/ssh-ctrl-${vnchost}-${i} -L ${i}:localhost:${i} -N -f -l $vncuser $vnchost
+    ssh -f -N -M -S /tmp/ssh-ctrl-${vnchost}-${i} -L ${i}:localhost:${i} -l $vncuser $vnchost
     if [ $? -eq 0 ]; then
         echo " - Done"
     else
