@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0  
+Exec=/path/to/NovaRemoteControlRooms/JustDoIt.sh TestBeam-1
+Name=FarDet-1
+Comment=Connect to VNC session TestBeam-1
+Terminal=true  
+Type=Application
+Icon=/path/to/NovaRemoteControlRooms/graphics/nova.png
+Comment[en_US]=
+GenericName[en_US]=Connect to VNC session TestBeam-1

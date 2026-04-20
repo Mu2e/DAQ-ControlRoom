@@ -1,0 +1,25 @@
+{
+    "user": [   "mu2edaq", 
+                "mu2eshift", 
+                "mu2eraw", 
+                "mu2edcs", 
+                "mu2e-teststand", 
+                "mu2e-controlroom"
+            ],
+    "principal": {  "mu2edaq" :  "mu2edaq/mu2edaq/mu2e.fnal.gov@FNAL.GOV",
+                    "mu2eshift" : "mu2eshift/mu2edaq/mu2e.fnal.gov@FNAL.GOV",
+                    "mu2eraw" : "mu2eraw/mu2edaq/mu2e.fnal.gov@FNAL.GOV",
+                    "mu2edcs" : "mu2edcs/mu2edaq/mu2e.fnal.gov@FNAL.GOV",
+                    "mu2e-teststand" : "mu2e-teststand/mu2edaq/mu2e.fnal.gov@FNAL.GOV",
+                    "mu2e-controlroom" : "mu2e-controlroom/mu2edaq/mu2e.fnal.gov@FNAL.GOV"
+                },
+    "keytab-master": "mu2e-all.keytab",
+    "keytab": {    "mu2edaq" : "mu2edaq.keytab",
+                    "mu2eshift" : "mu2eshift.keytab",
+                    "mu2eraw" : "mu2eraw.keytab",
+                    "mu2edcs" : "mu2edcs.keytab",
+                    "mu2e-teststand" : "mu2e-teststand.keytab",
+                    "mu2e-controlroom" : "mu2e-controlroom.keytab"
+                },
+    "keypath": "/Users/anorman/Kerberos_Keytabs/Mu2e"
+}

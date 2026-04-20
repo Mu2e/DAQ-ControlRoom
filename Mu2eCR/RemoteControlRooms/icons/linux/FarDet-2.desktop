@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0  
+Exec=/path/to/NovaRemoteControlRooms/JustDoIt.sh FarDet-2
+Name=FarDet-2
+Comment=Connect to VNC session FarDet-2
+Terminal=true  
+Type=Application
+Icon=/path/to/NovaRemoteControlRooms/graphics/nova.png
+Comment[en_US]=
+GenericName[en_US]=Connect to VNC session FarDet-2

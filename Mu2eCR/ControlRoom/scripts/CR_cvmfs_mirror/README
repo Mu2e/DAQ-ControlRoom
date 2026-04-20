@@ -1,0 +1,22 @@
+1. The script to run is make_cvmfs_mirror.sh;
+
+2. to run it, you need to be in a directory contains this script with the other two python scripts in this package.
+
+3. it needs to be run inside a docker container (slf6.7) with cvmfs installed on the host machine; you can use the following docker command:
+
+docker run --rm -v /cvmfs:/cvmfs -v $PWD:/scratch dingpf/slf6.7 /scratch/make_cvmfs_mirror.sh CR-VERSION
+
+4. once it's finished, it will create a "cvmfs" directory in your current working directory; it contains the nova and fermilab cvmfs repo (only files needed for this CR release), and one setup script.
+
+5. you can put pakcages (ups products) which you do not want to be copied into the mirror in the "dirs_exclude.txt" file; directories contains of strings presented in the file will get excluded;
+
+6. the script will create a list file contains directories in cvmfs. It is recommended to check the directory size and identify bigs one which are not needed by running CR jobs, and exclude those.
+
+7. testing the mirror with docker container:
+     docker run --rm -it -v $PWD/cvmfs:/cvmfs -p 5900:5900 -p 6900:6900 dingpf/slf6.7:vnc  
+     # this starts the docker container with the mirror mounted at /cvmfs;
+     # it is running the container interactively,
+     # once in the container, just use the normal steps to run the CR release.
+     # you can connect to the vnc from host machine with vncviwer to localhost:5900
+     # or you can open your browser and go to http://localhost:6900
+     # password for the vnc is "password" (without the double quotes).

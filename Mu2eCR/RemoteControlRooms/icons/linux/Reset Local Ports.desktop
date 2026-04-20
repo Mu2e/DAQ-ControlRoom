@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Terminal=false
+Icon[en_US]=gnome-panel-force-quit
+Name[en_US]=Reset Local Ports
+Exec=/path/to/NovaRemoteControlRooms/ResetLocalPorts.sh
+Comment[en_US]=Fixes "Too Many Security Failures"
+Name=Reset Local Ports
+Comment=Fixes "Too Many Security Failures"
+Icon=gnome-panel-force-quit

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0  
+Exec=/path/to/NovaRemoteControlRooms/JustDoIt.sh FermiCR-3
+Name=FermiCR-3
+Comment=Connect to VNC session FermiCR-3
+Terminal=true  
+Type=Application
+Icon=/path/to/NovaRemoteControlRooms/graphics/nova.png
+Comment[en_US]=
+GenericName[en_US]=Connect to VNC session FermiCR-3

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0  
+Exec=/path/to/NovaControlRooms/GetTicket.sh
+Name=GetTicket
+Comment=Get Kerberos Identity
+Terminal=true  
+Type=Application
+Icon=/path/to/NovaRemoteControlRooms/graphics/ticket.jpg
+Name[en_US]=GetTicket
+Comment[en_US]=
+GenericName[en_US]=Get Kerberos Identity

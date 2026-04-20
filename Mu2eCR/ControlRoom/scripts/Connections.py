@@ -1,0 +1,35 @@
+connections =  {
+                "NearDet-1"     : ("novadaq-near-mgr-02",   5951),
+                "NearDet-2"     : ("novadaq-near-mgr-02",   5952),
+                "NearDet-3"     : ("novadaq-near-mgr-02",   5953),
+                "FarDet-1"      : ("novadaq-far-master-02", 5951),
+                "FarDet-2"      : ("novadaq-far-master-02", 5952),
+                "FarDet-3"      : ("novadaq-far-master-02", 5953),
+                "FermiCR-3"     : ("nova-cr-03", 5953),
+                "FermiCR-4"     : ("nova-cr-04", 5954),
+                "TestBeam-1"    : ("novadaq-test-master", 5951),
+                "TestBeam-2"    : ("novadaq-test-master", 5952),
+                "TestBeam-3"    : ("novadaq-test-master", 5953),
+                "TestBeam-4"    : ("novabeamlinedaq00", 5951)
+                #"Test-1"        : ("nova03.fnal.gov",5996),
+                #"Test-2"        : ("nova03.fnal.gov",5997),
+              }
+displays = {
+            "NDOS-1"        : "novacr01",
+            "NDOS-2"        : "novacr02",
+            "NDOS-3"        : "novacr03",
+            "NearDet-1"     : "novacr01",
+            "NearDet-2"     : "novacr02",
+            "NearDet-3"     : "novacr03",
+            "FarDet-1"      : "novacr01",
+            "FarDet-2"      : "novacr02",
+            "FarDet-3"      : "novacr03",
+            "FermiCR-3"     : "novacr03",
+            "FermiCR-4"     : "novacr04",
+            "TestBeam-1"    : "novacr01",
+            "TestBeam-2"    : "novacr02",
+            "TestBeam-3"    : "novacr03",
+            "TestBeam-4"    : "novadaq"
+            #"Test-1"        : "tamsett",
+            #"Test-2"        : "tamsett",
+            }

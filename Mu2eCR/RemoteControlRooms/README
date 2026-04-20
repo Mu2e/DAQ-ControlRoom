@@ -1,0 +1,45 @@
+Short explanation of the scripts:
+
+There are a few environment variables that will control where to find remote control room scripts, control room scripts, and vnc password file, and vnc binary.
+
+# make sure path find vncviewer you would like to use, mine is in ~/bin, a symlink works too.
+export PATH=$HOME/bin:$PATH
+
+The following environment variables need to be tailored for your site. 
+They are found in "SetupROCOptions.sh" which is sourced every time JustDoIt.sh runs.
+
+# for convenience, you can store the vnc password in a file
+export NOVACRPWDFILE=~/.vnc/novacrpwdfile
+# no more absolute paths to remote control rooms scripts.  Use this env variable to define location.
+export NOVARCRPATH=~/NovaCR/NovaRemoteControlRooms
+# no more absolute path to control room scripts.  Use this env varaible to define location.
+export NOVACRSCRIPTSPATH=~/NovaCR/NovaControlRoom/scripts
+# basic options for VNC are specified in the files.  If you want to add anything, add it here:
+export NOVARCRVNCOPTIONS="-geometry=1200x1350 -Scaling=AspectFit"
+
+Tools.py - Finds Gateway tunnel, Establishes local ssh tunnel, Attaches the vnc viewer
+
+# ListLocalPorts made redundant with functions in Tools.py.  
+# This caused requirement for python 2.7.5, no longer depends on this.
+# DON'T USE ListLocalPorts.sh - See what local ssh tunnels are established, too many of these and you'll see security errors when trying to connect a vnc viewer
+
+ResetLocalPorts.sh - Find and kill local ssh tunnels, good habit to get into when no active VNC viewers remain on a machine. Prevents ssh tunnel pileup and keeps vnc viewers connecting smoothly.
+(Should not be needed now that OneButton will reuse existing connections.)
+
+ListGatewayTunnels.py - Prints out a list of resources you can connect your VNC viewer too. Mostly used by other scripts.
+
+OpenTunnels.sh - Called with one argument to establish gateway tunnel to that resource.
+
+OneButton.py - The heavy lifter, this is the script that calls all the other ones to find out if there's an open gateway tunnel to the resource you want, establishes one if there isn't, sets up the local ssh tunnel and connects the VNC viewer to it.
+
+JustDoIt.sh - A little wrapper required for OneButton.py to work correctly, adding the path with the needed scripts to PYTHONPATH and then calling the OneButton.py with the detector resource you want to connect to.
+
+So the Desktop shortcuts we have then look like:
+sh /local/nova/RemoteControlRoom/JustDoIt.sh FarDet-1
+sh /local/nova/RemoteControlRoom/JustDoIt.sh FarDet-2
+etc.
+For MacOS one can use the .command files.
+
+If a tunnel has to be established, you will see an xterm window pop open to let you know the status of the gateway tunnel it has made and the process will wait until you have closed that window to establish the local ssh tunnel and connect the vnc viewer. 
+
+There should be a ROC expert at each institute so hopefully they're on the list and will pass on this knowledge.

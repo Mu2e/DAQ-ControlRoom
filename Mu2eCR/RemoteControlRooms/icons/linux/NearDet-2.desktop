@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0  
+Exec=/path/to/NovaRemoteControlRooms/JustDoIt.sh NearDet-2
+Name=NearDet-2
+Comment=Connect to VNC session NearDet-2
+Terminal=true  
+Type=Application
+Icon=/path/to/NovaRemoteControlRooms/graphics/nova.png
+Comment[en_US]=
+GenericName[en_US]=Connect to VNC session NearDet-2
