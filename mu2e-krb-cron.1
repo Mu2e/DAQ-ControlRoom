@@ -5,6 +5,7 @@ mu2e\-krb\-cron \- headless Kerberos ticket lifecycle manager for cron
 .B mu2e\-krb\-cron.py
 [\fB\-\-config\fR \fIFILE\fR]
 [\fB\-\-verbose\fR]
+[\fB\-\-silent\fR]
 [\fB\-\-dry\-run\fR]
 .SH DESCRIPTION
 .B mu2e\-krb\-cron.py
@@ -37,6 +38,15 @@ Renews the ticket in place with
 .B Ticket present, principal allowed, remaining lifetime below the renew threshold, and the renewable lifetime is also below the renew\-till threshold
 The ticket can no longer be renewed usefully; obtains a fresh ticket with
 .BR "kinit \-kt" .
+.TP
+.B After any ticket action
+Calls
+.BR kswitch (1)
+to make the principal mapped to the current OS user the active default
+credential cache (see
+.B user_principals
+in
+.BR CONFIGURATION ).
 .PP
 OS\-specific
 .B kinit
@@ -65,6 +75,18 @@ keys omitted from the file receive their default values.
 Enable debug\-level log output.
 Produces additional lines showing thresholds, the detected principal, raw
 ticket times, and the exact commands that will be (or would be) run.
+Takes precedence over
+.BR \-\-silent .
+.TP
+.BR \-\-silent ", " \-s
+Suppress all
+.B INFO
+messages.
+Only
+.B WARNING
+and above are written to stdout.
+Useful in cron entries where output should be mailed only on genuine
+problems.
 .TP
 .BR \-\-dry\-run ", " \-n
 Parse configuration and evaluate ticket state normally, but log the intended
@@ -95,6 +117,10 @@ principals:
     keytab: "/path/to/principal.keytab"
   \- name: "other/host/realm@REALM"
     keytab: "/path/to/other.keytab"
+
+user_principals:
+  operatoruser: "principal/host/realm@REALM"
+  anotheruser:  "other/host/realm@REALM"
 .fi
 .PP
 At least one entry under
@@ -126,6 +152,23 @@ Optional path to a file to which log output is appended in addition to
 stdout.
 If omitted, output goes to stdout only (suitable for capture by
 .BR cron ).
+.SS user_principals
+.PP
+An optional mapping from OS usernames to Kerberos principal strings.
+After all ticket management is complete the script calls
+.BR kswitch (1)
+with the principal that corresponds to the user running the script.
+If the current user is not present in the map, the
+.B kswitch
+step is skipped silently.
+.PP
+Example:
+.PP
+.nf
+user_principals:
+  mu2edaq:   "mu2edaq/mu2edaq/mu2e.fnal.gov@FNAL.GOV"
+  mu2eshift: "mu2eshift/mu2edaq/mu2e.fnal.gov@FNAL.GOV"
+.fi
 .SH EXIT STATUS
 .TP
 .B 0
@@ -185,11 +228,15 @@ YAML parser
 .RB ( pip
 .BR "install pyyaml" ).
 .TP
-.BR kinit (1),\  kdestroy (1)
+.BR kinit (1),\  kdestroy (1),\  klist (1),\  kswitch (1)
 Must be present on
 .BR PATH .
 Provided by the system Kerberos installation (MIT Kerberos on Linux;
 Heimdal or MIT on macOS).
+.B klist
+is used to read current ticket expiry times.
+.B kswitch
+is used to set the active credential cache after ticket management.
 .SH SEE ALSO
 .BR kinit (1),
 .BR kdestroy (1),

@@ -15,25 +15,50 @@ Use --config to supply an external YAML file instead.
 """
 
 import argparse
+import getpass
 import logging
 import platform
 import subprocess
 import sys
 import time
 
+# Note we need two exernal libraries
+# - PyYAML for config parsing (pip install pyyaml)
+# - krb5 for Kerberos interaction (pip install krb5)
+#
+# There is a requirements.txt file that should be 
+# run with pip to get these dependencies
 import yaml
 import krb5
 
 # ---------------------------------------------------------------------------
 # Embedded default configuration — edit principals and keytab paths here,
 # or supply an external file via --config.
+#
+# Because we are intending to run this from cronn,
+# we want to avoid any external files.  This would be a problem
+# if someone were to change the configuration and effectively
+# allow for an arbitrary principal to be renewed or re-acquired
+#
+# We stll allow for a config file to be used from the commandline
+# so that we can test changes, but for the production version
+# it should be run from cron with no arguments
+# 
+# -AJN
 # ---------------------------------------------------------------------------
 DEFAULT_CONFIG = """
+# These are the settings that control when 
+# tickets are renewed vs when new ones are acquired.
 settings:
   renew_threshold_hours: 2
-  renew_till_threshold_hours: 24
+  renew_till_threshold_hours: 24      # If less than 1 day remains on the renewal life 
+                                      #then we get a new one  
   # log_file: /var/log/krb-cron.log   # optional; uncomment to log to a file
 
+# Note: These are the principals and paths to their keytabs
+# That we want to manage with this script.
+# If the script finds a ticket that doesn't match one of these
+# it will destroy the existing ticket and get new one from this list
 principals:
   - name: "mu2edaq/mu2edaq/mu2e.fnal.gov@FNAL.GOV"
     keytab: "/Users/anorman/Kerberos_Keytabs/Mu2e/mu2edaq.keytab"
@@ -47,6 +72,14 @@ principals:
     keytab: "/Users/anorman/Kerberos_Keytabs/Mu2e/mu2e-teststand.keytab"
   - name: "mu2e-controlroom/mu2edaq/mu2e.fnal.gov@FNAL.GOV"
     keytab: "/Users/anorman/Kerberos_Keytabs/Mu2e/mu2e-controlroom.keytab"
+
+# Maps the OS username of the logged-in operator to the Kerberos principal
+# that should be made active (via kswitch) after tickets are managed.
+user_principals:
+  mu2edaq: "mu2edaq/mu2edaq/mu2e.fnal.gov@FNAL.GOV"
+  mu2eshift: "mu2eshift/mu2edaq/mu2e.fnal.gov@FNAL.GOV"
+  mu2eraw: "mu2eraw/mu2edaq/mu2e.fnal.gov@FNAL.GOV"
+  anorman: "anorman@FNAL.GOV"
 """
 
 # ---------------------------------------------------------------------------
@@ -61,18 +94,23 @@ def load_config(path=None):
       config["settings"]["renew_till_threshold_hours"]
       config["principals"]  — list of {"name": ..., "keytab": ...}
     """
+    # Load configuration from external file if provided, otherwise use embedded default
     if path is not None:
         with open(path, "r") as fh:
             data = yaml.safe_load(fh)
     else:
         data = yaml.safe_load(DEFAULT_CONFIG)
 
+    # Ensure the "settings" section exists and populate with defaults if missing
     settings = data.setdefault("settings", {})
     settings.setdefault("renew_threshold_hours", 2)
     settings.setdefault("renew_till_threshold_hours", 24)
 
+    # Validate that at least one principal is configured
     if "principals" not in data or not data["principals"]:
         raise ValueError("Configuration must contain at least one principal entry.")
+
+    data.setdefault("user_principals", {})
 
     return data
 
@@ -90,33 +128,50 @@ def get_current_principal(ctx, cache):
         return None
 
 
-def get_ticket_times(ctx, cache):
-    """Iterate credentials in *cache* and return (endtime, renew_till) for the TGT.
+def get_ticket_times():
+    """Parse klist output to return (endtime, renew_till) for the TGT.
 
-    Both values are Unix timestamps (int).  Returns (None, None) if no TGT is found.
+    Both values are Unix timestamps (int).  Returns (None, None) on failure.
+    Supports MIT Kerberos (Linux) and Heimdal (macOS) date formats.
     """
-    cursor = krb5.cc_start_seq_get(ctx, cache)
+    import re
+    from datetime import datetime
+
+    # MIT Kerberos: "04/20/2026 10:00:00"  /  Heimdal: "Apr 20 10:00:00 2026"
+    _dt_pat = (
+        r"\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}"
+        r"|[A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4}"
+    )
+    _dt_fmts = ("%m/%d/%Y %H:%M:%S", "%b %d %H:%M:%S %Y")
+
+    def _to_epoch(s):
+        for fmt in _dt_fmts:
+            try:
+                return int(datetime.strptime(s.strip(), fmt).timestamp())
+            except ValueError:
+                pass
+        return None
+
+    try:
+        result = subprocess.run(["klist"], capture_output=True, text=True)
+        if result.returncode != 0:
+            return None, None
+    except FileNotFoundError:
+        logging.error("klist executable not found")
+        return None, None
+
     endtime = None
     renew_till = None
-    try:
-        while True:
-            try:
-                cred = krb5.cc_next_cred(ctx, cache, cursor)
-                server_name = cred.server.name
-                # server_name may be bytes or str depending on library version
-                if isinstance(server_name, bytes):
-                    server_name = server_name.decode()
-                if "krbtgt/" in server_name:
-                    endtime = cred.times.endtime
-                    renew_till = cred.times.renew_till
-                    break
-            except krb5.Krb5Error:
-                break
-    finally:
-        try:
-            krb5.cc_end_seq_get(ctx, cache, cursor)
-        except Exception:
-            pass
+    for line in result.stdout.splitlines():
+        if "krbtgt/" in line:
+            dates = re.findall(_dt_pat, line)
+            if len(dates) >= 2:
+                endtime = _to_epoch(dates[1])  # second column = expires
+        elif "renew until" in line.lower():
+            dates = re.findall(_dt_pat, line)
+            if dates:
+                renew_till = _to_epoch(dates[0])
+
     return endtime, renew_till
 
 
@@ -127,9 +182,11 @@ def get_ticket_times(ctx, cache):
 def _run(cmd, dry_run):
     """Log and optionally execute *cmd* (list of str)."""
     logging.debug("Command: %s", " ".join(cmd))
+    # In dry-run mode, only log what would be executed without actually running it
     if dry_run:
         logging.info("[dry-run] would run: %s", " ".join(cmd))
         return
+    # Execute the command and handle common failure modes
     try:
         subprocess.run(cmd, check=True)
     except subprocess.CalledProcessError as exc:
@@ -140,6 +197,7 @@ def _run(cmd, dry_run):
 
 def kinit_new(principal, keytab, dry_run):
     """Obtain a fresh ticket for *principal* using *keytab*."""
+    # Build platform-specific kinit command (macOS vs Linux have different flag names)
     os_name = platform.system()
     if os_name == "Darwin":
         # macOS: -f forwardable, -A addressless, -k use keytab, -t keytab path
@@ -153,6 +211,7 @@ def kinit_new(principal, keytab, dry_run):
 
 def kinit_renew(principal, dry_run):
     """Renew the existing ticket for *principal*."""
+    # Use kinit -R to renew without requiring password/keytab
     logging.info("Renewing ticket for %s", principal)
     _run(["kinit", "-R", principal], dry_run)
 
@@ -161,6 +220,17 @@ def run_kdestroy(dry_run):
     """Destroy the current default ticket cache."""
     logging.info("Destroying current ticket cache (unknown principal)")
     _run(["kdestroy"], dry_run)
+
+
+def set_active_principal(user_principals, dry_run):
+    """Switch the default credential cache to the principal mapped to the current OS user."""
+    username = getpass.getuser()
+    principal = user_principals.get(username)
+    if principal is None:
+        logging.debug("No default principal mapping for user '%s'; skipping kswitch.", username)
+        return
+    logging.info("Switching active ticket to %s (user: %s)", principal, username)
+    _run(["kswitch", "-p", principal], dry_run)
 
 
 # ---------------------------------------------------------------------------
@@ -183,6 +253,11 @@ def main():
         help="Enable debug-level logging.",
     )
     parser.add_argument(
+        "--silent", "-s",
+        action="store_true",
+        help="Suppress all INFO output; only WARNING and above are shown.",
+    )
+    parser.add_argument(
         "--dry-run", "-n",
         action="store_true",
         dest="dry_run",
@@ -191,11 +266,17 @@ def main():
     args = parser.parse_args()
 
     # --- Logging setup ---
-    log_level = logging.DEBUG if args.verbose else logging.INFO
+    if args.verbose:
+        log_level = logging.DEBUG
+    elif args.silent:
+        log_level = logging.WARNING
+    else:
+        log_level = logging.INFO
     log_format = "%(asctime)s %(levelname)s %(message)s"
     logging.basicConfig(format=log_format, level=log_level, stream=sys.stdout)
 
     # --- Load config ---
+    # Load either embedded defaults or external config file with error handling
     try:
         config = load_config(args.config)
     except FileNotFoundError:
@@ -205,12 +286,13 @@ def main():
         logging.error("Invalid config: %s", exc)
         sys.exit(1)
 
+    # Extract configuration values and convert time thresholds to seconds
     settings = config["settings"]
     principals = config["principals"]
     renew_threshold_secs = settings["renew_threshold_hours"] * 3600
     renew_till_threshold_secs = settings["renew_till_threshold_hours"] * 3600
 
-    # Optional file handler
+    # Add optional file logging handler if configured
     log_file = settings.get("log_file")
     if log_file:
         fh = logging.FileHandler(log_file)
@@ -218,7 +300,9 @@ def main():
         fh.setLevel(log_level)
         logging.getLogger().addHandler(fh)
 
-    # Build lookup: principal name → keytab path
+    user_principals = config["user_principals"]
+
+    # Build lookup structures for fast principal validation and keytab retrieval
     principal_keytab = {p["name"]: p["keytab"] for p in principals}
     allowed_principals = set(principal_keytab.keys())
 
@@ -230,6 +314,7 @@ def main():
     logging.debug("Configured principals: %s", ", ".join(allowed_principals))
 
     # --- Init krb5 context and default cache ---
+    # Initialize the Kerberos library and get handle to the default credential cache
     try:
         ctx = krb5.init_context()
         cache = krb5.cc_default(ctx)
@@ -237,18 +322,22 @@ def main():
         logging.error("Failed to initialise krb5 context: %s", exc)
         sys.exit(1)
 
+    # Check what principal (if any) currently holds a ticket
     current_principal = get_current_principal(ctx, cache)
 
     # --- No ticket: get one for every configured principal ---
+    # If there's no active ticket, acquire fresh tickets for all configured principals
     if current_principal is None:
         logging.info("No active Kerberos ticket found.")
         for p in principals:
             kinit_new(p["name"], p["keytab"], args.dry_run)
+        set_active_principal(user_principals, args.dry_run)
         sys.exit(0)
 
     logging.debug("Current principal: %s", current_principal)
 
     # --- Unknown principal: destroy and re-acquire ---
+    # If the existing ticket is for a principal not in our config, destroy it and start fresh
     if current_principal not in allowed_principals:
         logging.warning(
             "Current principal '%s' is not in the allowed list — destroying ticket.",
@@ -257,16 +346,21 @@ def main():
         run_kdestroy(args.dry_run)
         for p in principals:
             kinit_new(p["name"], p["keytab"], args.dry_run)
+        set_active_principal(user_principals, args.dry_run)
         sys.exit(0)
 
     # --- Principal is allowed: inspect ticket times ---
-    endtime, renew_till = get_ticket_times(ctx, cache)
+    # Get the TGT expiration time and renewable-until time
+    endtime, renew_till = get_ticket_times()
 
+    # If we can't read the TGT times, try renewing as a fallback
     if endtime is None:
         logging.warning("Could not read TGT times for %s; attempting renewal.", current_principal)
         kinit_renew(current_principal, args.dry_run)
+        set_active_principal(user_principals, args.dry_run)
         sys.exit(0)
 
+    # Calculate how much time remains before expiration and before renew_till
     now = int(time.time())
     remaining = endtime - now
     renew_remaining = (renew_till - now) if renew_till else 0
@@ -277,15 +371,19 @@ def main():
         renew_remaining / 3600,
     )
 
+    # Look up the keytab path for this principal
     keytab = principal_keytab[current_principal]
 
+    # Decision logic: determine whether to do nothing, renew, or get a new ticket
     if remaining >= renew_threshold_secs:
+        # Ticket has plenty of time left — no action needed
         logging.info(
             "Ticket for %s is healthy (%.1fh remaining).",
             current_principal,
             remaining / 3600,
         )
     elif renew_remaining < renew_till_threshold_secs:
+        # Ticket is expiring soon AND we can't renew (renew_till is also expiring) — get new ticket
         logging.info(
             "Ticket for %s cannot be renewed (renew_till in %.1fh < %.1fh threshold) — getting new ticket.",
             current_principal,
@@ -294,6 +392,7 @@ def main():
         )
         kinit_new(current_principal, keytab, args.dry_run)
     else:
+        # Ticket is expiring soon BUT renew_till is still valid — just renew the existing ticket
         logging.info(
             "Ticket for %s has %.1fh remaining (< %.1fh threshold) — renewing.",
             current_principal,
@@ -301,6 +400,8 @@ def main():
             settings["renew_threshold_hours"],
         )
         kinit_renew(current_principal, args.dry_run)
+
+    set_active_principal(user_principals, args.dry_run)
 
 
 if __name__ == "__main__":
