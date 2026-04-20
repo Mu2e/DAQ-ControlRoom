@@ -1,0 +1,209 @@
+.TH MU2E\-KRB\-CRON 1 "April 2026" "DAQ-ControlRoom" "Mu2e DAQ Utilities"
+.SH NAME
+mu2e\-krb\-cron \- headless Kerberos ticket lifecycle manager for cron
+.SH SYNOPSIS
+.B mu2e\-krb\-cron.py
+[\fB\-\-config\fR \fIFILE\fR]
+[\fB\-\-verbose\fR]
+[\fB\-\-dry\-run\fR]
+.SH DESCRIPTION
+.B mu2e\-krb\-cron.py
+is a headless Python script designed to be invoked from
+.BR cron (8)
+to manage Kerberos ticket lifecycle for Mu2e DAQ service principals.
+.PP
+On each run the script inspects the default Kerberos credential cache and
+takes one of the following actions:
+.TP
+.B No ticket present
+Calls
+.B kinit \-kt
+for every principal listed in the configuration, then exits.
+.TP
+.B Ticket present but principal not in the configured list
+Destroys the current ticket cache with
+.BR kdestroy ,
+then calls
+.B kinit \-kt
+for every configured principal, then exits.
+.TP
+.B Ticket present, principal allowed, lifetime above the renew threshold
+Logs that the ticket is healthy and exits without taking any action.
+.TP
+.B Ticket present, principal allowed, remaining lifetime below the renew threshold, and the renewable lifetime (renew\-till) is still above the renew\-till threshold
+Renews the ticket in place with
+.BR "kinit \-R" .
+.TP
+.B Ticket present, principal allowed, remaining lifetime below the renew threshold, and the renewable lifetime is also below the renew\-till threshold
+The ticket can no longer be renewed usefully; obtains a fresh ticket with
+.BR "kinit \-kt" .
+.PP
+OS\-specific
+.B kinit
+flags are selected automatically:
+.RS
+.IP \(bu 2
+.BR macOS :
+.B kinit \-f \-A \-k \-t
+.I keytab principal
+.IP \(bu 2
+.BR Linux :
+.B kinit \-5 \-F \-A \-k \-t
+.I keytab principal
+.RE
+.SH OPTIONS
+.TP
+.BI \-\-config " FILE"
+Path to an external YAML configuration file.
+When supplied this file completely replaces the configuration embedded in the
+script.
+Any
+.B settings
+keys omitted from the file receive their default values.
+.TP
+.BR \-\-verbose ", " \-v
+Enable debug\-level log output.
+Produces additional lines showing thresholds, the detected principal, raw
+ticket times, and the exact commands that will be (or would be) run.
+.TP
+.BR \-\-dry\-run ", " \-n
+Parse configuration and evaluate ticket state normally, but log the intended
+.B kinit
+or
+.B kdestroy
+commands instead of executing them.
+No changes are made to any credential cache.
+Useful for testing configuration before deploying the cron entry.
+.SH CONFIGURATION
+The script contains an embedded YAML block (\fBDEFAULT_CONFIG\fR) that serves
+as its configuration when
+.B \-\-config
+is not given.
+Edit that block directly for site\-specific principals and keytab paths,
+or create a separate YAML file and pass it with
+.BR \-\-config .
+.SS Configuration file format
+.PP
+.nf
+settings:
+  renew_threshold_hours: 2          # renew if lifetime < this many hours
+  renew_till_threshold_hours: 24    # get new ticket if renew\-till < this many hours
+  log_file: /var/log/mu2e\-krb\-cron.log  # optional; omit to log to stdout only
+
+principals:
+  \- name: "principal/host/realm@REALM"
+    keytab: "/path/to/principal.keytab"
+  \- name: "other/host/realm@REALM"
+    keytab: "/path/to/other.keytab"
+.fi
+.PP
+At least one entry under
+.B principals
+is required.
+Each entry must supply both
+.B name
+(the full Kerberos principal string) and
+.B keytab
+(an absolute path to the keytab file).
+.SS Settings
+.TP
+.B renew_threshold_hours
+Number of hours of remaining ticket lifetime below which the script will
+attempt to renew or replace the ticket.
+Default:
+.BR 2 .
+.TP
+.B renew_till_threshold_hours
+Number of hours of remaining
+.I renewable
+lifetime below which the script obtains a brand\-new ticket instead of
+renewing.
+Default:
+.BR 24 .
+.TP
+.B log_file
+Optional path to a file to which log output is appended in addition to
+stdout.
+If omitted, output goes to stdout only (suitable for capture by
+.BR cron ).
+.SH EXIT STATUS
+.TP
+.B 0
+Normal exit — one of: ticket healthy, ticket renewed, new ticket obtained,
+unknown principal destroyed and replaced, or dry\-run completed.
+.TP
+.B 1
+Fatal error: configuration file not found, invalid YAML, no principals
+configured, or failure to initialise the krb5 context.
+.SH EXAMPLES
+.SS Dry\-run with verbose output
+.PP
+.nf
+python3 mu2e\-krb\-cron.py \-\-dry\-run \-\-verbose
+.fi
+.SS Run with an external config file
+.PP
+.nf
+python3 mu2e\-krb\-cron.py \-\-config /etc/mu2e/krb\-cron.yaml
+.fi
+.SS Crontab entry (every 30 minutes)
+.PP
+Add to the crontab with
+.BR crontab (1):
+.PP
+.nf
+*/30 * * * * /usr/bin/python3 /path/to/DAQ\-ControlRoom/mu2e\-krb\-cron.py
+.fi
+.PP
+To use an external config and capture errors by email:
+.PP
+.nf
+MAILTO=oncall@example.com
+*/30 * * * * /usr/bin/python3 /path/to/mu2e\-krb\-cron.py \e
+    \-\-config /etc/mu2e/krb\-cron.yaml
+.fi
+.SH FILES
+.TP
+.I mu2e\-krb\-cron.py
+The script itself; contains the embedded default YAML configuration.
+.TP
+.I /Users/anorman/Kerberos_Keytabs/Mu2e/
+Default directory referenced by the embedded configuration for Mu2e keytab
+files.
+.SH DEPENDENCIES
+.TP
+.B Python
+3.9 or later.
+.TP
+.B krb5
+Python Kerberos 5 bindings
+.RB ( pip
+.BR "install krb5" ).
+.TP
+.B pyyaml
+YAML parser
+.RB ( pip
+.BR "install pyyaml" ).
+.TP
+.BR kinit (1),\  kdestroy (1)
+Must be present on
+.BR PATH .
+Provided by the system Kerberos installation (MIT Kerberos on Linux;
+Heimdal or MIT on macOS).
+.SH SEE ALSO
+.BR kinit (1),
+.BR kdestroy (1),
+.BR klist (1),
+.BR crontab (1),
+.BR cron (8),
+.BR krb5.conf (5)
+.SH AUTHORS
+Andrew Norman, Mu2e DAQ group, Fermi National Accelerator Laboratory.
+.SH BUGS
+Only the default credential cache is inspected; tickets in non\-default
+caches are not managed.
+.PP
+The script takes action on behalf of the single configured principal whose
+name matches the current default cache.
+If multiple allowed principals have active tickets in separate caches, only
+the default cache principal is evaluated for renewal.
